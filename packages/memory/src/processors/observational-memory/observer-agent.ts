@@ -1,6 +1,7 @@
 import type { MastraDBMessage } from '@mastra/core/agent';
 import type { CoreMessage } from '@mastra/core/llm';
 
+import { isSystemReminderMessage } from '../../system-reminders';
 import { stripEphemeralAnchorIds } from './anchor-ids';
 import { isTemporalGapMarker } from './date-utils';
 import type { Extractor } from './extractor';
@@ -986,18 +987,18 @@ function getTemporalGapMarkerText(msg: MastraDBMessage): string | undefined {
   return undefined;
 }
 
+/**
+ * System reminders are control-plane context (continuation hints, agent
+ * reminders, reactive signals), not conversation content, so the observer must
+ * not treat them as user input. Temporal-gap markers are the exception: they
+ * are reminders that carry observable timing information, so they stay.
+ *
+ * Reminders are emitted as standalone messages (signals serialize to their own
+ * user message), so dropping the whole message is safe: real conversation
+ * content is never mixed into a reminder message.
+ */
 function isObserverControlReminder(msg: MastraDBMessage): boolean {
-  if (isTemporalGapMarker(msg)) {
-    return false;
-  }
-
-  const metadata = getObserverMessageMetadata(msg);
-  if (metadata?.systemReminder || metadata?.reminderType) {
-    return true;
-  }
-
-  const firstTextPart = msg.content?.parts?.find(part => part.type === 'text');
-  return typeof firstTextPart?.text === 'string' && firstTextPart.text.trimStart().startsWith('<system-reminder');
+  return isSystemReminderMessage(msg) && !isTemporalGapMarker(msg);
 }
 
 function formatObserverMessage(
